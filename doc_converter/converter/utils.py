@@ -1,80 +1,122 @@
 import os
 from pdf2docx import Converter
 from docx import Document
-from reportlab.pdfgen import canvas
-from openpyxl import load_workbook
-import csv
+from fpdf import FPDF
+import pandas as pd
 from PIL import Image
 
 def convert_file(file_path, target_format):
     base, ext = os.path.splitext(file_path)
-    ext = ext.lower()  # Normalize extensions
+    ext = ext.lower().strip(".")
     converted_path = f"{base}.{target_format}"
 
-    if ext == ".pdf" and target_format == "docx":
+    # PDF to DOCX
+    if ext == "pdf" and target_format == "docx":
         cv = Converter(file_path)
         cv.convert(converted_path)
         cv.close()
 
-    elif ext == ".docx" and target_format == "pdf":
+    # DOCX to PDF
+    elif ext == "docx" and target_format == "pdf":
         doc = Document(file_path)
-        pdf = canvas.Canvas(converted_path)
-        y = 800
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+
         for para in doc.paragraphs:
-            pdf.drawString(100, y, para.text)
-            y -= 20
-        pdf.save()
+            if pdf.get_y() > 270:  # Check if near bottom of page
+                pdf.add_page()  # Add a new page if needed
+            pdf.multi_cell(0, 10, txt=para.text)
 
-    elif ext == ".txt" and target_format == "pdf":
-        with open(file_path, "r", encoding="utf-8") as txt_file:
-            pdf = canvas.Canvas(converted_path)
-            y = 800
-            for line in txt_file.readlines():
-                pdf.drawString(100, y, line.strip())
-                y -= 20
-            pdf.save()
+        pdf.output(converted_path)
 
-    elif ext == ".png" and target_format == "pdf":
-        image = Image.open(file_path)
-        image.convert("RGB").save(converted_path)
+    # TXT to PDF
+    elif ext == "txt" and target_format == "pdf":
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
 
-    elif ext == ".xlsx" and target_format == "pdf":
-        workbook = load_workbook(file_path)
-        sheet = workbook.active
-        pdf = canvas.Canvas(converted_path)
-        y = 800
-        for row in sheet.iter_rows(values_only=True):
-            pdf.drawString(100, y, ", ".join(map(str, row)))
-            y -= 20
-        pdf.save()
+        with open(file_path, "r", encoding="utf-8") as file:
+            for line in file:
+                if pdf.get_y() > 270:
+                    pdf.add_page()
+                pdf.multi_cell(0, 10, txt=line.strip())
 
-    elif ext == ".xlsx" and target_format == "docx":
-        workbook = load_workbook(file_path)
-        sheet = workbook.active
+        pdf.output(converted_path)
+
+    # PNG to PDF
+    elif ext == "png" and target_format == "pdf":
+        img = Image.open(file_path)
+        img.convert("RGB").save(converted_path)
+
+    # XLSX to PDF
+    elif ext == "xlsx" and target_format == "pdf":
+        df = pd.read_excel(file_path)
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=8)
+
+        for row in df.itertuples(index=False):
+            row_text = " | ".join(str(cell) for cell in row)
+            if pdf.get_y() > 270:
+                pdf.add_page()
+            pdf.multi_cell(0, 10, txt=row_text)
+
+        pdf.output(converted_path)
+
+    # XLSX to DOCX
+    elif ext == "xlsx" and target_format == "docx":
+        df = pd.read_excel(file_path)
         doc = Document()
-        for row in sheet.iter_rows(values_only=True):
-            doc.add_paragraph(", ".join(map(str, row)))
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        table.style = "Table Grid"
+
+        hdr_cells = table.rows[0].cells
+        for i, column_name in enumerate(df.columns):
+            hdr_cells[i].text = str(column_name)
+
+        for row in df.itertuples(index=False):
+            row_cells = table.add_row().cells
+            for i, cell in enumerate(row):
+                row_cells[i].text = str(cell)
+
         doc.save(converted_path)
 
-    elif ext == ".csv" and target_format == "pdf":
-        with open(file_path, newline='', encoding="utf-8") as csvfile:
-            reader = csv.reader(csvfile)
-            pdf = canvas.Canvas(converted_path)
-            y = 800
-            for row in reader:
-                pdf.drawString(100, y, ", ".join(row))
-                y -= 20
-            pdf.save()
+    # CSV to PDF
+    elif ext == "csv" and target_format == "pdf":
+        df = pd.read_csv(file_path)
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+        pdf.set_font("Arial", size=8)
 
-    elif ext == ".csv" and target_format == "docx":
+        for row in df.itertuples(index=False):
+            row_text = " | ".join(str(cell) for cell in row)
+            if pdf.get_y() > 270:
+                pdf.add_page()
+            pdf.multi_cell(0, 10, txt=row_text)
+
+        pdf.output(converted_path)
+
+    # CSV to DOCX
+    elif ext == "csv" and target_format == "docx":
+        df = pd.read_csv(file_path)
         doc = Document()
-        with open(file_path, newline='', encoding="utf-8") as csvfile:
-            reader = csv.reader(csvfile)
-            for row in reader:
-                doc.add_paragraph(", ".join(row))
+        table = doc.add_table(rows=1, cols=len(df.columns))
+        table.style = "Table Grid"
+
+        hdr_cells = table.rows[0].cells
+        for i, column_name in enumerate(df.columns):
+            hdr_cells[i].text = str(column_name)
+
+        for row in df.itertuples(index=False):
+            row_cells = table.add_row().cells
+            for i, cell in enumerate(row):
+                row_cells[i].text = str(cell)
+
         doc.save(converted_path)
 
-    else:
-        raise ValueError(f"Conversion from {ext} to {target_format} is not supported.")
-
-    return converted_path  # Return the path of the converted file
+    return converted_path
